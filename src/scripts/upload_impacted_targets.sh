@@ -2,15 +2,9 @@
 
 set -euo pipefail
 
-IS_FORK_BOOL="${IS_FORK:=false}"
-
-# API Token is required if PR is not from a fork, or
-# RUN ID is required if PR is from a fork
-if [[ (-z ${API_TOKEN-}) && (${IS_FORK_BOOL} == 'false') ]]; then
-	echo "Missing API Token when PR is not from a fork"
-	exit 2
-elif [[ (-z ${RUN_ID-}) && (${IS_FORK_BOOL} == 'true') ]]; then
-	echo "Missing workflow run id when PR is from a fork"
+# API Token
+if [[ -z ${API_TOKEN+x} ]]; then
+	echo "Missing API Token"
 	exit 2
 fi
 
@@ -23,7 +17,7 @@ fi
 REPO_OWNER=$(echo "${REPOSITORY}" | cut -d "/" -f 1)
 REPO_NAME=$(echo "${REPOSITORY}" | cut -d "/" -f 2)
 
-if [[ (-z ${PR_NUMBER}) || (-z ${PR_BRANCH_HEAD_SHA}) ]]; then
+if [[ (-z ${PR_NUMBER}) || (-z ${PR_SHA}) ]]; then
 	echo "Missing PR params"
 	exit 2
 fi
@@ -44,7 +38,7 @@ REPO_BODY=$(
 PR_BODY=$(
 	jq --null-input \
 		--arg number "${PR_NUMBER}" \
-		--arg sha "${PR_BRANCH_HEAD_SHA}" \
+		--arg sha "${PR_SHA}" \
 		'{ "number": $number, "sha": $sha }'
 )
 
@@ -83,11 +77,9 @@ else
 	num_impacted_targets=$(wc -l <"${IMPACTED_TARGETS_FILE}")
 fi
 
-RESPONSE_BODY_FILE="./response.txt"
-
 HTTP_STATUS_CODE=$(
-	curl -s -o "${RESPONSE_BODY_FILE}" -w '%{http_code}' -X POST \
-		-H "Content-Type: application/json" -H "x-api-token:${API_TOKEN-}" -H "x-forked-workflow-run-id:${RUN_ID-}" \
+	curl -s -o /dev/null -w '%{http_code}' -X POST \
+		-H "Content-Type: application/json" -H "x-api-token:${API_TOKEN}" \
 		-d "@${POST_BODY}" \
 		"${API_URL}"
 )
@@ -95,10 +87,10 @@ HTTP_STATUS_CODE=$(
 EXIT_CODE=0
 COMMENT_TEXT=""
 if [[ ${HTTP_STATUS_CODE} == 200 ]]; then
-	COMMENT_TEXT="✨ Uploaded ${num_impacted_targets} impacted targets for ${PR_NUMBER} @ ${PR_BRANCH_HEAD_SHA}"
+	COMMENT_TEXT="✨ Uploaded ${num_impacted_targets} impacted targets for ${PR_NUMBER} @ ${PR_SHA}"
 else
 	EXIT_CODE=1
-	COMMENT_TEXT="❌ Unable to upload impacted targets. Encountered ${HTTP_STATUS_CODE} @ ${PR_BRANCH_HEAD_SHA}. Please contact us at slack.trunk.io."
+	COMMENT_TEXT="❌ Unable to upload impacted targets. Encountered ${HTTP_STATUS_CODE} @ ${PR_SHA}. Please contact us at slack.trunk.io."
 
 	# Dependabot doesn't have access to GitHub action Secrets.
 	# On authn failure, prompt the user to update their token.
@@ -113,10 +105,4 @@ else
 fi
 
 echo "${COMMENT_TEXT}"
-
-if [[ ${HTTP_STATUS_CODE} != 200 ]]; then
-	echo "Response Body:"
-	cat "${RESPONSE_BODY_FILE}"
-fi
-
 exit "${EXIT_CODE}"
