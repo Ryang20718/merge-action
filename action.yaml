@@ -35,6 +35,11 @@ inputs:
       See https://github.com/dorny/paths-filter/blob/master/.github/filters.yml for an example.
     required: false
     default: ""
+outputs:
+  impacted_targets_out:
+    description: Impacted targets list
+    value: ${{ steps.compute-impacted-targets.outputs.impacted_targets_out }}
+
 
 runs:
   using: composite
